@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>Scanner Barcode — Warung Awann POS</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#20372b;background:#f3f7f3}*{box-sizing:border-box}body{margin:0;padding:18px;min-height:100vh;display:grid;place-items:center}.card{width:min(700px,100%);background:#fff;border:1px solid #e1e9e2;border-radius:22px;box-shadow:0 18px 60px #20372b12;overflow:hidden}.head{padding:22px 24px;border-bottom:1px solid #e7ede7}.brand{font-size:11px;letter-spacing:.12em;font-weight:800;color:#1a7052;text-transform:uppercase}.head h1{font-size:22px;margin:8px 0 5px}.head p{font-size:13px;color:#718075;line-height:1.5;margin:0}.content{padding:20px 24px}.status{padding:12px 14px;border-radius:12px;background:#eef5ef;color:#516c5b;font-size:13px;line-height:1.5;margin-bottom:14px}.viewport{background:#0d1712;min-height:220px;border-radius:16px;overflow:hidden;display:grid;place-items:center}.viewport video{max-width:100%!important;border-radius:14px}.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px}.btn{border:0;border-radius:11px;padding:12px 16px;font-weight:750;cursor:pointer;background:#17684f;color:white}.btn.secondary{background:#edf3ee;color:#385345}.btn:disabled{opacity:.5;cursor:not-allowed}.field{margin-top:16px}.field label{display:block;font-weight:700;font-size:12px;margin-bottom:7px;color:#52665a}.field input{width:100%;border:1px solid #d7e2d9;border-radius:11px;padding:12px 13px;font:inherit;outline-color:#4c9c7d}.foot{font-size:12px;color:#77867b;line-height:1.6;padding:0 24px 22px}.hide{display:none!important}@media(max-width:520px){body{padding:0}.card{min-height:100vh;border-radius:0}.head,.content{padding:18px}.foot{padding:0 18px 22px}.viewport{min-height:240px}}
+  </style>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <main class="card">
+    <header class="head"><div class="brand">Warung Awann POS</div><h1>Scan barcode produk</h1><p>Halaman kamera mandiri untuk pemindai barcode. Setelah barcode terbaca, hasil dikirim kembali ke tab aplikasi POS.</p></header>
+    <section class="content">
+      <div id="status" class="status">Memeriksa sesi scanner…</div>
+      <div id="reader" class="viewport"><span style="color:#b7c6bb;font-size:13px;padding:20px;text-align:center">Kamera akan ditampilkan di sini setelah izin diberikan.</span></div>
+      <div class="actions"><button id="startBtn" class="btn" type="button">Mulai / coba kamera lagi</button><button id="stopBtn" class="btn secondary" type="button" disabled>Berhenti scan</button><button id="returnBtn" class="btn secondary" type="button">Kembali ke POS</button></div>
+      <form id="manualForm" class="field"><label for="manualCode">Input barcode manual jika kamera tidak tersedia</label><input id="manualCode" autocomplete="off" inputmode="numeric" placeholder="Masukkan atau tempel barcode"><div class="actions"><button class="btn" type="submit">Kirim barcode ke POS</button></div></form>
+    </section>
+    <footer class="foot">Jika izin kamera ditolak, klik ikon pengaturan situs di bilah alamat browser lalu ubah Kamera menjadi Izinkan. Halaman ini harus dibuka lewat tombol dari Warung Awann POS agar dapat mengirim hasil kembali.</footer>
+  </main>
+<script>
+'use strict';
+const params=new URLSearchParams(location.search);
+const nonce=params.get('nonce')||'';
+const parentContext=params.get('context')==='cashier'?'cashier':'product';
+const statusEl=document.getElementById('status');
+const startBtn=document.getElementById('startBtn');
+const stopBtn=document.getElementById('stopBtn');
+let scanner=null,started=false,sent=false;
+function status(message,isError=false){statusEl.textContent=message;statusEl.style.background=isError?'#fff0ee':'#eef5ef';statusEl.style.color=isError?'#9a382d':'#516c5b';}
+function sendToParent(barcode){
+  const code=String(barcode||'').trim();if(!code)return;
+  if(!nonce||!window.opener||window.opener.closed){status('Tidak ada koneksi ke aplikasi POS. Buka scanner dari tombol pada Warung Awann POS.',true);return;}
+  sent=true;status('Barcode '+code+' terbaca. Mengirim hasil kembali ke POS…');
+  try{window.opener.postMessage({type:'WA_POS_CAMERA_BARCODE',nonce:nonce,barcode:code,context:parentContext},'*');}catch(e){status('Gagal mengirim hasil ke aplikasi POS. Kembali ke POS dan coba lagi.',true);sent=false;return;}
+  stopScanner();
+  document.getElementById('manualCode').value=code;
+  setTimeout(()=>{try{window.close();}catch(e){}},900);
+}
+async function stopScanner(){
+  if(scanner&&started){try{await scanner.stop();}catch(e){} }
+  if(scanner){try{scanner.clear();}catch(e){} }
+  scanner=null;started=false;stopBtn.disabled=true;
+}
+async function startScanner(){
+  if(!nonce||!window.opener||window.opener.closed){status('Buka halaman ini menggunakan tombol “Buka scanner kamera” dari aplikasi Warung Awann POS.',true);startBtn.disabled=true;return;}
+  if(!window.isSecureContext){status('Browser tidak menganggap halaman ini aman. Gunakan URL HTTPS.',true);return;}
+  if(!window.Html5Qrcode){status('Library scanner gagal dimuat. Periksa koneksi internet/CDN, lalu gunakan input manual.',true);return;}
+  await stopScanner();sent=false;startBtn.disabled=true;status('Meminta izin kamera…');
+  try{
+    scanner=new Html5Qrcode('reader',{verbose:false,formatsToSupport:[
+      Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.QR_CODE
+    ]});
+    let cameraId;
+    try{const cameras=await Html5Qrcode.getCameras();const preferred=cameras.find(c=>/back|rear|environment|world|belakang/i.test(String(c.label||'')))||cameras[cameras.length-1];cameraId=preferred&&preferred.id;}catch(e){}
+    await scanner.start(cameraId||{facingMode:'environment'},{fps:10,qrbox:(w,h)=>({width:Math.max(150,Math.min(360,Math.floor(w*.86))),height:Math.max(90,Math.min(180,Math.floor(h*.5)))})},decoded=>{if(!sent)sendToParent(decoded);},()=>{});
+    started=true;stopBtn.disabled=false;status('Kamera aktif. Arahkan barcode produk ke dalam bingkai.');
+  }catch(e){await stopScanner();const detail=String(e&&e.message||e||'izin kamera ditolak');status('Kamera tidak dapat dibuka: '+detail+'. Izinkan akses kamera pada pengaturan situs, lalu klik Mulai lagi. Input manual tetap tersedia.',true);}
+  finally{startBtn.disabled=false;}
+}
+startBtn.addEventListener('click',startScanner);
+stopBtn.addEventListener('click',async()=>{await stopScanner();status('Pemindaian dihentikan.');});
+document.getElementById('returnBtn').addEventListener('click',()=>{try{window.close();}catch(e){};});
+document.getElementById('manualForm').addEventListener('submit',e=>{e.preventDefault();sendToParent(document.getElementById('manualCode').value);});
+window.addEventListener('message',async e=>{if(e.source!==window.opener||!e.data||e.data.type!=='WA_POS_CAMERA_STOP'||e.data.nonce!==nonce)return;await stopScanner();status('Scanner dihentikan oleh aplikasi POS.');});
+if(!nonce||!window.opener||window.opener.closed){status('Buka scanner dari tombol pada Warung Awann POS agar hasil barcode dapat dikirim kembali.',true);startBtn.disabled=true;}
+else status('Siap. Klik Mulai / coba kamera lagi, lalu izinkan akses kamera.');
+</script>
+</body>
+</html>
